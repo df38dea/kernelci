@@ -37,7 +37,7 @@ jobs:
           echo "BUILD_TIME=$(date "+%y%m%d%H")" >> $GITHUB_ENV
           sudo mkdir -p /mnt/kernel_workspace
           sudo chmod 0777 /mnt/kernel_workspace
-          cp patches /mnt/kernel_workspace/patches
+          cp -r patches /mnt/kernel_workspace/patches
 
           git config --global user.email "build-user@build-host"
           git config --global user.name "build-user"
