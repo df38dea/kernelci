@@ -7,6 +7,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v4
+      - uses: Ylarod/setup-ndk-clang@v1
+        with:
+          ndk-version: r29
+      - run: clang --version
       - name: Set swap
         run: |
           export SWAP_FILE=$(swapon --show=NAME | tail -n 1)
@@ -22,21 +27,17 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y python3 git libelf-dev zlib1g-dev
+          sudo apt install -y python3 git libelf-dev zlib1g-dev dwarves
           curl https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
           chmod a+x ~/repo
           sudo mv ~/repo /bin/repo
-
-      - uses: Ylarod/setup-ndk-clang@v1
-        with:
-          ndk-version: r29
-      - run: clang --version
 
       - name: Set Environment Variable
         run: |
           echo "BUILD_TIME=$(date "+%y%m%d%H")" >> $GITHUB_ENV
           sudo mkdir -p /mnt/kernel_workspace
           sudo chmod 0777 /mnt/kernel_workspace
+          cp patches /mnt/kernel_workspace/patches
 
           git config --global user.email "build-user@build-host"
           git config --global user.name "build-user"
@@ -56,8 +57,8 @@ jobs:
           sed -i 's/check_defconfig//' ./common/build.config.gki
           sed -i '$s|echo "\$res"|echo "-castor"|' ./common/scripts/setlocalversion
           cd common
-          wget https://github.com/ravindu644/Droidspaces-OSS/raw/main/Documentation/resources/kernel-patches/GKI/below-kernel-6.12/001.GKI-below-6.12-fix_sysvipc_kabi_6_7_8.patch -O sysvipc.patch
-          patch -p1 < sysvipc.patch
+          patch -p1 < ../patches/sysvipc.patch
+          patch -p1 < ../patches/crc_check.patch
 
       - name: Add Configuration Settings
         run: |
