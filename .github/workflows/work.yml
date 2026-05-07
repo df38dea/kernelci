@@ -49,6 +49,7 @@ jobs:
           # Initialize and sync kernel source
           echo "Initializing and syncing kernel source..."
           git clone https://github.com/OnePlus-12-Development/android_kernel_oneplus_sm8650.git --depth 1 --branch lineage-23.2 common
+          git clone https://github.com/OnePlus-12-Development/android_kernel_oneplus_sm8650-modules.git --depth 1 --branch lineage-23.2 sm8650-modules
 
           # Modify
           rm -rf ./common/android/abi_gki_protected_exports_* || echo "No protected exports!"
