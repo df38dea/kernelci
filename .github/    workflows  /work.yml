@@ -1,0 +1,102 @@
+name: Build Kernel waffle
+
+jobs:
+  build-kernel:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set swap
+        run: |
+          export SWAP_FILE=$(swapon --show=NAME | tail -n 1)
+          sudo swapoff $SWAP_FILE
+          sudo rm -rf $SWAP_FILE
+          sudo fallocate -l 16G /swap_filex
+          sudo chmod 600 /swap_filex
+          sudo mkswap /swap_filex
+          sudo swapon /swap_filex
+          df -h
+          free -h
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y python3 git
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/repo
+          chmod a+x ~/repo
+          sudo mv ~/repo /bin/repo
+
+      - uses: Ylarod/setup-ndk-clang@v1
+        with:
+          ndk-version: r29
+      - run: clang --version
+
+      - name: Set Environment Variable
+        run: |
+          echo "BUILD_TIME=$(date "+%y%m%d%H")" >> $GITHUB_ENV
+          sudo mkdir -p /mnt/kernel_workspace
+          sudo chmod 0777 /mnt/kernel_workspace
+
+          git config --global user.email "build-user@build-host"
+          git config --global user.name "build-user"
+
+      - name: Sync Kernel Source
+        run: |
+          echo "Creating folder for configuration: /mnt/kernel_workspace..."
+          cd "/mnt/kernel_workspace"
+
+          # Initialize and sync kernel source
+          echo "Initializing and syncing kernel source..."
+          git clone https://github.com/OnePlus-12-Development/android_kernel_oneplus_sm8650.git --depth 1 --branch lineage-23.2 common
+
+          # Modify
+          rm -rf ./common/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          sed -i 's/check_defconfig//' ./common/build.config.gki
+          sed -i '$s|echo "\$res"|echo "-castor"|' ./common/scripts/setlocalversion
+          cd common
+          wget https://github.com/ravindu644/Droidspaces-OSS/raw/main/Documentation/resources/kernel-patches/GKI/below-kernel-6.12/001.GKI-below-6.12-fix_sysvipc_kabi_6_7_8.patch -O sysvipc.patch
+          patch -p1 < sysvipc.patch
+
+      - name: Add Configuration Settings
+        run: |
+          echo "Changing to configuration directory: /mnt/kernel_workspace..."
+          cd "/mnt/kernel_workspace"
+          echo "Adding configuration settings to gki_defconfig..."
+          echo "CONFIG_PID_NS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_POSIX_MQUEUE=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_SYSVIPC=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_IPC_NS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_USER_NS=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_DEVTMPFS=y" >> ./common/arch/arm64/configs/gki_defconfig
+
+      - name: Build the Kernel
+        run: |
+          echo "Changing to configuration directory: /mnt/kernel_workspace..."
+          cd "/mnt/kernel_workspace"
+          mkdir out
+          cd .common
+          export Kargs="KBUILD_BUILD_HOST=castor KBUILD_BUILD_USER=ci -j$(nproc --all) O=/mnt/kernel_workspace/out CC=clang LLVM=1 LLVM_IAS=1 ARCH=arm64"
+          make $Kargs gki_defconfig vendor/oplus/pineapple_GKI.config
+          make $Kargs Image
+
+      - name: Create AnyKernel3
+        run: |
+          echo "Changing to configuration directory: /mnt/kernel_workspace/..."
+          cd "/mnt/kernel_workspace/"
+
+          git clone https://github.com/Kernel-SU/AnyKernel3 --depth=1
+
+          echo "Copying Image"
+          cp ./out/arch/arm64/boot/Image ./AnyKernel3/Image
+
+      - name: Upload AnyKernel3
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnyKernel3-waffle-6.1-${{ env.BUILD_TIME }}
+          path: /mnt/kernel_workspace/AnyKernel3/*
+
+      - name: Upload Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: Image-${{ env.BUILD_TIME }}
+          path: /mnt/kernel_workspace/out/dist/Image
